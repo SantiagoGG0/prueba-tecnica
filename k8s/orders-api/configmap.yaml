@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orders-api-config
+  namespace: orderflow
+data:
+  ASPNETCORE_ENVIRONMENT: Production
+  RabbitMq__Host: rabbitmq.orderflow.svc.cluster.local
+  RabbitMq__Port: "5672"
+  Outbox__PollingIntervalMs: "1000"
+  Outbox__BatchSize: "50"
