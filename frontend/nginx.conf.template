@@ -1,0 +1,32 @@
+# Variables (envsubst): ORDERS_API_URL, NGINX_RESOLVER
+server {
+    listen 8080;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # proxy_pass con variable para que nginx re-resuelva el nombre; si no, se queda con la IP
+    # del arranque y da 502 cuando el contenedor de la API se recrea.
+    resolver ${NGINX_RESOLVER} valid=10s ipv6=off;
+    set $orders_api ${ORDERS_API_URL};
+
+    location /api/ {
+        rewrite ^/api/(.*)$ /$1 break;
+        proxy_pass $orders_api;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # SignalR (websocket)
+    location /hubs/ {
+        proxy_pass $orders_api;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 1h;
+    }
+
+    location / {
+        try_files $uri /index.html;
+    }
+}
