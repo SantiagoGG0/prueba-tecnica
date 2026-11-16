@@ -1,0 +1,18 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Node
+node_modules/
+dist/
+
+# Entorno
+.env
+
+# Notas personales de preparación y enunciado (no forman parte de la entrega)
+GUIA-SUSTENTACION.md
+PRUEBAS-PASO-A-PASO.md
+*.pdf
