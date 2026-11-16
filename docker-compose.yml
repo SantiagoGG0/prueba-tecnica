@@ -1,0 +1,95 @@
+# Credenciales por variables de entorno o .env (ver .env.example).
+# Los defaults son solo para desarrollo local.
+
+name: orderflow
+
+x-rabbit-env: &rabbit-env
+  RabbitMq__Host: rabbitmq
+  RabbitMq__User: ${RABBITMQ_USER:-orderflow}
+  RabbitMq__Password: ${RABBITMQ_PASSWORD:-orderflow_dev}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-orderflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-orderflow_dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-orderflow}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-orderflow_dev}
+    ports:
+      - "15672:15672"   # UI de administración: http://localhost:15672
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  orders-api:
+    build:
+      context: ./backend
+      dockerfile: src/OrderFlow.Orders.Api/Dockerfile
+    environment:
+      <<: *rabbit-env
+      ConnectionStrings__OrdersDb: Host=postgres;Port=5432;Database=orders;Username=${POSTGRES_USER:-orderflow};Password=${POSTGRES_PASSWORD:-orderflow_dev}
+    ports:
+      - "5000:8080"     # API directa (opcional): http://localhost:5000/orders
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  inventory-worker:
+    build:
+      context: ./backend
+      dockerfile: src/OrderFlow.Inventory.Worker/Dockerfile
+    environment:
+      <<: *rabbit-env
+      ConnectionStrings__InventoryDb: Host=postgres;Port=5432;Database=inventory;Username=${POSTGRES_USER:-orderflow};Password=${POSTGRES_PASSWORD:-orderflow_dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    environment:
+      ORDERS_API_URL: http://orders-api:8080
+    ports:
+      - "8080:8080"     # Panel: http://localhost:8080
+    depends_on:
+      orders-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Solo se ejecuta bajo demanda: docker compose run --rm tests
+  tests:
+    build:
+      context: ./backend
+      dockerfile: tests/Dockerfile
+    profiles: ["test"]
+
+volumes:
+  pgdata:
+  rabbitdata:
